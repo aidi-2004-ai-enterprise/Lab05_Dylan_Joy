@@ -22,16 +22,18 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.naive_bayes import GaussianNB
 
-# ----------------------------
+# Fix Matplotlib Backend to Avoid Tkinter Warnings
+import matplotlib
+matplotlib.use("Agg")  # non-interactive backend for scripts
+
 # Utility: ensure output dirs
-# ----------------------------
+
 def ensure_dir(path: str):
     os.makedirs(path, exist_ok=True)
     return path
 
-# ---------------------------------
 # EDA: hist, box, correlation heat
-# ---------------------------------
+
 def eda_plots(X: pd.DataFrame, y: pd.Series, out_dir: str, max_hist=24):
     eda_dir = ensure_dir(os.path.join(out_dir, "eda"))
     # Basic summary
@@ -97,9 +99,8 @@ def short_name(s: str, maxlen=16) -> str:
     s2 = s.strip()
     return (s2[:maxlen-1] + "…") if len(s2) > maxlen else s2
 
-# -----------------------------------------
 # Feature selection: simple corr filtering
-# -----------------------------------------
+
 def correlation_filter(X: pd.DataFrame, y: pd.Series, threshold: float = 0.95):
     """
     Remove one feature from pairs with |corr| > threshold.
@@ -126,9 +127,8 @@ def correlation_filter(X: pd.DataFrame, y: pd.Series, threshold: float = 0.95):
     selected_cols = [c for c in X.columns if c not in to_drop]
     return selected_cols, sorted(list(to_drop))
 
-# -------------------------
 # PSI (train vs. test)
-# -------------------------
+
 def calculate_psi(expected: np.ndarray, actual: np.ndarray, buckets: int = 10) -> float:
     """Population Stability Index over fixed quantile buckets on expected (train)."""
     expected = np.array(expected).astype(float)
@@ -190,9 +190,8 @@ def psi_report(X_train: pd.DataFrame, X_test: pd.DataFrame, out_dir: str, topn: 
         "psi_overlay_pngs": [f"psi/dist_train_vs_test_{safe_name(f)}.png" for f in top["feature"].head(3)]
     }
 
-# -------------------------
 # Model defs & tuning
-# -------------------------
+
 def get_models_and_spaces(random_state=42):
     lr = LogisticRegression(class_weight="balanced", max_iter=2000, random_state=random_state, solver="liblinear")
     rf = RandomForestClassifier(class_weight="balanced", n_estimators=300, random_state=random_state, n_jobs=-1)
@@ -221,9 +220,8 @@ def tune_model(name, model, space, X, y, scoring="roc_auc", random_state=42):
     search.fit(X, y)
     return search.best_estimator_, search.best_params_, search.best_score_
 
-# -------------------------
 # Evaluation & plots
-# -------------------------
+
 def evaluate_model(model, X_tr, y_tr, X_te, y_te, label: str, out_dir: str):
     # Predict probabilities (handle classifiers without predict_proba if needed)
     if hasattr(model, "predict_proba"):
@@ -300,9 +298,8 @@ def evaluate_model(model, X_tr, y_tr, X_te, y_te, label: str, out_dir: str):
         "calibration": os.path.relpath(cal_path, out_dir)
     }
 
-# -------------------------
 # SHAP for interpretability
-# -------------------------
+
 def shap_summary(best_label, best_model, X_train, out_dir: str, max_samples=2000):
     shap_dir = ensure_dir(os.path.join(out_dir, "shap"))
     try:
@@ -343,9 +340,8 @@ def shap_summary(best_label, best_model, X_train, out_dir: str, max_samples=2000
             f.write(f"SHAP skipped: {e}\nInstall shap to enable (pip install shap).")
         return {"skipped": "shap/shap_skipped.txt"}
 
-# -------------------------
 # Report (Markdown)
-# -------------------------
+
 def write_report(out_dir: str, meta: dict, eda_assets: dict, psi_assets: dict, model_summaries: dict,
                  metrics_table: pd.DataFrame, best_block: dict, fs_cols: list, dropped_cols: list):
     report_path = os.path.join(out_dir, "report.md")
@@ -434,9 +430,8 @@ def write_report(out_dir: str, meta: dict, eda_assets: dict, psi_assets: dict, m
 
     return report_path
 
-# -------------------------
 # Main pipeline
-# -------------------------
+
 def main(args):
     out_dir = ensure_dir(args.out_dir)
 
@@ -463,8 +458,17 @@ def main(args):
 
     # Feature selection: correlation filter
     selected_cols, dropped_cols = correlation_filter(X_train_imp, y_train, threshold=0.95)
+
+    # Remove constant columns to avoid divide warnings
     X_train_fs = X_train_imp[selected_cols].copy()
+
+    # drop constant columns
+    X_train_fs = X_train_fs.loc[:, X_train_fs.nunique() > 1]  
+
     X_test_fs  = X_test_imp[selected_cols].copy()
+
+    # keep same cols as train
+    X_test_fs  = X_test_fs.loc[:, X_test_fs.columns.isin(X_train_fs.columns)]  
 
     # Scaler for LR & NB
     scaler = StandardScaler()

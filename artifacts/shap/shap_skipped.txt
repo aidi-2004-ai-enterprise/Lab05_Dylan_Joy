@@ -1,0 +1,2 @@
+SHAP skipped: The beeswarm plot does not support plotting explanations with instances that have more than one dimension!
+Install shap to enable (pip install shap).
