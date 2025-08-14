@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # Lab05_Dylan_Joy
 
 ## Overview
